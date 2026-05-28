@@ -1,7 +1,8 @@
 """
-House Price Prediction
-Author: Anshu Sharma
-Tech Stack: Python, Pandas, NumPy, Scikit-learn, Matplotlib, Seaborn
+House Price Prediction — Bangalore Housing Dataset
+Author : Anshu Sharma
+Dataset: 13,000+ real Bangalore house listings
+Tech   : Python, Pandas, NumPy, Scikit-learn, Matplotlib, Seaborn
 """
 
 import os
@@ -19,234 +20,263 @@ warnings.filterwarnings('ignore')
 
 os.makedirs('plots', exist_ok=True)
 sns.set_theme(style='whitegrid', palette='muted')
+plt.rcParams['figure.figsize'] = (10, 6)
 
 
-# ─────────────────────────────────────────
-# 1. Generate Dataset
-# ─────────────────────────────────────────
-def generate_dataset(n=1000, seed=42):
-    np.random.seed(seed)
-    locations = ['Prime', 'Good', 'Average', 'Outskirts']
-    loc_mult  = {'Prime': 1.6, 'Good': 1.2, 'Average': 1.0, 'Outskirts': 0.75}
+# ─────────────────────────────────────────────────────
+# 1. LOAD & CLEAN DATA
+# ─────────────────────────────────────────────────────
+def load_and_clean(path='House_Data.csv'):
+    print("[1/5] Loading and cleaning data...")
+    df = pd.read_csv(path)
+    print(f"      Raw data: {df.shape[0]} rows, {df.shape[1]} columns")
 
-    area      = np.random.randint(500, 5000, n)
-    bedrooms  = np.random.randint(1, 6, n)
-    bathrooms = np.clip(bedrooms - np.random.randint(0, 2, n), 1, 5)
-    floors    = np.random.randint(1, 4, n)
-    age       = np.random.randint(0, 40, n)
-    garage    = np.random.randint(0, 3, n)
-    location  = np.random.choice(locations, n, p=[0.15, 0.30, 0.35, 0.20])
-    garden    = np.random.randint(0, 2, n)
-    pool      = np.random.randint(0, 2, n)
+    # Drop low-value columns
+    df.drop(columns=['society', 'availability', 'area_type'], inplace=True)
 
-    mult  = np.array([loc_mult[l] for l in location])
-    price = (
-        (area * 45 + bedrooms * 120000 + bathrooms * 80000
-         + floors * 50000 - age * 15000 + garage * 90000
-         + garden * 70000 + pool * 150000) * mult
-        + np.random.normal(0, 150000, n)
-    ).clip(300000, None).astype(int)
+    # Drop duplicates and rows missing key fields
+    df.drop_duplicates(inplace=True)
+    df.dropna(subset=['size', 'location'], inplace=True)
 
-    df = pd.DataFrame({
-        'Area_sqft': area, 'Bedrooms': bedrooms, 'Bathrooms': bathrooms,
-        'Floors': floors, 'Age_years': age, 'Garage': garage,
-        'Has_Garden': garden, 'Has_Pool': pool,
-        'Location': location, 'Price': price
-    })
-    df.to_csv('house_prices.csv', index=False)
-    print(f"[DATA] Dataset created — {df.shape[0]} rows, {df.shape[1]} columns")
+    # Extract BHK count from size (e.g. "2 BHK" → 2)
+    df['bhk'] = df['size'].str.extract(r'(\d+)').astype(int)
+
+    # Fix total_sqft — handle ranges like "1000-1500" → take average
+    def convert_sqft(val):
+        val = str(val).strip()
+        if '-' in val:
+            try:
+                parts = val.split('-')
+                return (float(parts[0]) + float(parts[1])) / 2
+            except:
+                return None
+        try:
+            return float(val)
+        except:
+            return None
+
+    df['total_sqft'] = df['total_sqft'].apply(convert_sqft)
+
+    # Fill missing numeric values
+    df['bath']    = df['bath'].fillna(df['bath'].median())
+    df['balcony'] = df['balcony'].fillna(df['balcony'].median())
+    df.dropna(inplace=True)
+
+    # Remove outliers using price per sqft
+    df['price_per_sqft'] = df['price'] * 100000 / df['total_sqft']
+    df = df[(df['price_per_sqft'] > 500) & (df['price_per_sqft'] < 100000)]
+    df = df[df['bhk'] <= 10]
+    df = df[df['bath'] <= df['bhk'] + 2]
+    df = df[df['total_sqft'] >= 200]
+
+    # Group rare locations as 'Other' (keep only locations with 10+ listings)
+    loc_counts = df['location'].value_counts()
+    top_locs   = loc_counts[loc_counts >= 10].index
+    df['location'] = df['location'].apply(lambda x: x if x in top_locs else 'Other')
+
+    print(f"      Clean data: {df.shape[0]} rows")
     return df
 
 
-# ─────────────────────────────────────────
-# 2. EDA Plots
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────────
+# 2. EXPLORATORY DATA ANALYSIS
+# ─────────────────────────────────────────────────────
 def run_eda(df):
-    print("\n[EDA] Running exploratory data analysis...")
+    print("[2/5] Running EDA and saving plots...")
 
     # Price distribution
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    axes[0].hist(df['Price'], bins=40, color='steelblue', edgecolor='white')
-    axes[0].set(title='Price Distribution', xlabel='Price (₹)', ylabel='Count')
-    axes[1].hist(np.log1p(df['Price']), bins=40, color='coral', edgecolor='white')
+    axes[0].hist(df['price'], bins=50, color='steelblue', edgecolor='white')
+    axes[0].set(title='Price Distribution (Lakhs ₹)', xlabel='Price (Lakhs)', ylabel='Count')
+    axes[1].hist(np.log1p(df['price']), bins=50, color='coral', edgecolor='white')
     axes[1].set(title='Log Price Distribution', xlabel='Log(Price)', ylabel='Count')
     plt.tight_layout()
     plt.savefig('plots/price_distribution.png', dpi=150, bbox_inches='tight')
     plt.close()
 
-    # Price by location
+    # BHK vs Price
     plt.figure(figsize=(10, 6))
-    sns.boxplot(data=df, x='Location', y='Price',
-                order=['Prime', 'Good', 'Average', 'Outskirts'],
-                palette=['#e74c3c', '#e67e22', '#3498db', '#95a5a6'])
-    plt.title('Price by Location')
+    sns.boxplot(data=df[df['bhk'] <= 6], x='bhk', y='price', palette='Blues')
+    plt.title('Price by BHK', fontsize=14, fontweight='bold')
+    plt.xlabel('BHK')
+    plt.ylabel('Price (Lakhs ₹)')
     plt.tight_layout()
-    plt.savefig('plots/price_by_location.png', dpi=150, bbox_inches='tight')
+    plt.savefig('plots/price_by_bhk.png', dpi=150, bbox_inches='tight')
+    plt.close()
+
+    # Sqft vs Price
+    plt.figure(figsize=(10, 6))
+    plt.scatter(df['total_sqft'], df['price'], alpha=0.2, color='steelblue', s=10)
+    plt.title('Total Sqft vs Price', fontsize=14, fontweight='bold')
+    plt.xlabel('Total Sqft')
+    plt.ylabel('Price (Lakhs ₹)')
+    plt.tight_layout()
+    plt.savefig('plots/sqft_vs_price.png', dpi=150, bbox_inches='tight')
     plt.close()
 
     # Correlation heatmap
-    plt.figure(figsize=(10, 8))
-    corr = df.select_dtypes(include=np.number).corr()
-    mask = np.triu(np.ones_like(corr, dtype=bool))
-    sns.heatmap(corr, mask=mask, annot=True, fmt='.2f', cmap='coolwarm',
-                linewidths=0.5, square=True)
-    plt.title('Correlation Heatmap')
+    plt.figure(figsize=(8, 6))
+    corr = df[['total_sqft', 'bath', 'balcony', 'bhk', 'price']].corr()
+    sns.heatmap(corr, annot=True, fmt='.2f', cmap='coolwarm',
+                square=True, linewidths=0.5)
+    plt.title('Correlation Heatmap', fontsize=14, fontweight='bold')
     plt.tight_layout()
     plt.savefig('plots/correlation_heatmap.png', dpi=150, bbox_inches='tight')
     plt.close()
 
-    print("[EDA] Plots saved to /plots/")
+    # Top 10 most expensive locations
+    top_locs = df.groupby('location')['price'].median().sort_values(ascending=False).head(10)
+    plt.figure(figsize=(10, 6))
+    top_locs.plot(kind='barh', color='steelblue')
+    plt.title('Top 10 Locations by Median Price', fontsize=14, fontweight='bold')
+    plt.xlabel('Median Price (Lakhs ₹)')
+    plt.tight_layout()
+    plt.savefig('plots/top_locations.png', dpi=150, bbox_inches='tight')
+    plt.close()
+
+    print("      Plots saved to /plots/")
 
 
-# ─────────────────────────────────────────
-# 3. Preprocessing & Feature Engineering
-# ─────────────────────────────────────────
+# ─────────────────────────────────────────────────────
+# 3. FEATURE ENGINEERING & PREPROCESSING
+# ─────────────────────────────────────────────────────
 def preprocess(df):
-    df_m = df.copy()
+    print("[3/5] Preprocessing features...")
     le = LabelEncoder()
-    df_m['Location_enc'] = le.fit_transform(df_m['Location'])
-    df_m['Total_rooms']  = df_m['Bedrooms'] + df_m['Bathrooms']
-    df_m['Is_new']       = (df_m['Age_years'] <= 5).astype(int)
-    df_m['Luxury_score'] = df_m['Has_Garden'] + df_m['Has_Pool'] + (df_m['Garage'] > 1).astype(int)
+    df['location_enc'] = le.fit_transform(df['location'])
 
-    features = ['Area_sqft', 'Bedrooms', 'Bathrooms', 'Floors', 'Age_years',
-                'Garage', 'Has_Garden', 'Has_Pool', 'Location_enc',
-                'Total_rooms', 'Is_new', 'Luxury_score']
+    features = ['total_sqft', 'bath', 'balcony', 'bhk', 'location_enc']
+    X = df[features]
+    y = df['price']
 
-    X = df_m[features]
-    y = df_m['Price']
-    return X, y, le, features
-
-
-# ─────────────────────────────────────────
-# 4. Train & Evaluate Models
-# ─────────────────────────────────────────
-def evaluate(name, model, Xtr, ytr, Xte, yte):
-    model.fit(Xtr, ytr)
-    yp   = model.predict(Xte)
-    rmse = np.sqrt(mean_squared_error(yte, yp))
-    mae  = mean_absolute_error(yte, yp)
-    r2   = r2_score(yte, yp)
-    cv   = cross_val_score(model, Xtr, ytr, cv=5, scoring='r2').mean()
-    print(f"\n{'─'*40}\n{name}")
-    print(f"  R²   : {r2:.4f}  |  CV R²: {cv:.4f}")
-    print(f"  RMSE : ₹{rmse:>12,.0f}")
-    print(f"  MAE  : ₹{mae:>12,.0f}")
-    return {'Model': name, 'R2': round(r2, 4), 'RMSE': round(rmse, 0),
-            'MAE': round(mae, 0), 'CV_R2': round(cv, 4), 'preds': yp, 'obj': model}
-
-
-def train_models(X_train, y_train, X_test, y_test, X_train_sc, X_test_sc):
-    print("\n[MODELS] Training and evaluating models...")
-    results = [
-        evaluate('Linear Regression',   LinearRegression(),                                X_train_sc, y_train, X_test_sc, y_test),
-        evaluate('Ridge Regression',    Ridge(alpha=10),                                   X_train_sc, y_train, X_test_sc, y_test),
-        evaluate('Lasso Regression',    Lasso(alpha=1000),                                 X_train_sc, y_train, X_test_sc, y_test),
-        evaluate('Random Forest',       RandomForestRegressor(n_estimators=100, random_state=42), X_train, y_train, X_test, y_test),
-        evaluate('Gradient Boosting',   GradientBoostingRegressor(n_estimators=100, random_state=42), X_train, y_train, X_test, y_test),
-    ]
-    return results
-
-
-# ─────────────────────────────────────────
-# 5. Visualise Results
-# ─────────────────────────────────────────
-def plot_results(results, y_test, features):
-    res_df = pd.DataFrame([{k: v for k, v in r.items() if k not in ('preds', 'obj')} for r in results])
-    res_df = res_df.sort_values('R2', ascending=False).reset_index(drop=True)
-    print("\n[RESULTS] Model Comparison:")
-    print(res_df.to_string(index=False))
-
-    # Comparison bar chart
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    c1 = ['#2ecc71' if v == res_df['R2'].max() else '#3498db' for v in res_df['R2']]
-    axes[0].barh(res_df['Model'], res_df['R2'], color=c1)
-    axes[0].set(title='R² Score Comparison', xlabel='R²')
-    for i, v in enumerate(res_df['R2']):
-        axes[0].text(v + 0.005, i, f'{v:.4f}', va='center')
-
-    c2 = ['#2ecc71' if v == res_df['RMSE'].min() else '#e74c3c' for v in res_df['RMSE']]
-    axes[1].barh(res_df['Model'], res_df['RMSE'], color=c2)
-    axes[1].set(title='RMSE Comparison (lower = better)', xlabel='RMSE (₹)')
-    plt.tight_layout()
-    plt.savefig('plots/model_comparison.png', dpi=150, bbox_inches='tight')
-    plt.close()
-
-    # Best model diagnostics
-    best = max(results, key=lambda r: r['R2'])
-    y_pred = best['preds']
-
-    plt.figure(figsize=(9, 6))
-    plt.scatter(y_test, y_pred, alpha=0.4, color='steelblue', s=20)
-    mn, mx = y_test.min(), y_test.max()
-    plt.plot([mn, mx], [mn, mx], 'r--', lw=2, label='Perfect')
-    plt.title(f'Actual vs Predicted — {best["Model"]}')
-    plt.xlabel('Actual (₹)')
-    plt.ylabel('Predicted (₹)')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig('plots/actual_vs_predicted.png', dpi=150, bbox_inches='tight')
-    plt.close()
-
-    # Feature importance (if tree-based)
-    model_obj = best['obj']
-    if hasattr(model_obj, 'feature_importances_'):
-        imp = pd.Series(model_obj.feature_importances_, index=features).sort_values()
-        plt.figure(figsize=(9, 6))
-        c = ['#2ecc71' if v == imp.max() else '#3498db' for v in imp]
-        imp.plot(kind='barh', color=c)
-        plt.title(f'Feature Importance — {best["Model"]}')
-        plt.xlabel('Importance')
-        plt.tight_layout()
-        plt.savefig('plots/feature_importance.png', dpi=150, bbox_inches='tight')
-        plt.close()
-
-    print("[RESULTS] All plots saved to /plots/")
-    return best['obj']
-
-
-# ─────────────────────────────────────────
-# 6. Predict on New Sample
-# ─────────────────────────────────────────
-def predict_sample(model, le):
-    sample = pd.DataFrame([{
-        'Area_sqft': 1800, 'Bedrooms': 3, 'Bathrooms': 2, 'Floors': 2,
-        'Age_years': 5, 'Garage': 1, 'Has_Garden': 1, 'Has_Pool': 0,
-        'Location_enc': le.transform(['Good'])[0],
-        'Total_rooms': 5, 'Is_new': 1, 'Luxury_score': 1
-    }])
-    price = model.predict(sample)[0]
-    print(f"\n{'='*40}")
-    print("  SAMPLE PREDICTION")
-    print(f"{'='*40}")
-    print("  Area: 1800 sqft | 3 BHK | Location: Good")
-    print(f"  💰 Predicted Price: ₹{price:,.0f}")
-    print(f"{'='*40}")
-
-
-# ─────────────────────────────────────────
-# MAIN
-# ─────────────────────────────────────────
-if __name__ == '__main__':
-    df        = generate_dataset()
-    run_eda(df)
-
-    X, y, le, features = preprocess(df)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42)
 
     scaler     = StandardScaler()
     X_train_sc = scaler.fit_transform(X_train)
     X_test_sc  = scaler.transform(X_test)
 
-    results    = train_models(X_train, y_train, X_test, y_test, X_train_sc, X_test_sc)
-    best_model = plot_results(results, y_test, features)
+    print(f"      Train: {X_train.shape} | Test: {X_test.shape}")
+    return X_train, X_test, y_train, y_test, X_train_sc, X_test_sc, le, scaler, features
 
-    # Save the best model and label encoder for interactive predictions
-    import joblib
-    joblib.dump(best_model, 'best_model.joblib')
-    joblib.dump(le, 'label_encoder.joblib')
-    print("[SAVED] Best model ('best_model.joblib') and LabelEncoder ('label_encoder.joblib') saved.")
 
-    predict_sample(best_model, le)
+# ─────────────────────────────────────────────────────
+# 4. TRAIN & EVALUATE MODELS
+# ─────────────────────────────────────────────────────
+def train_and_evaluate(X_train, X_test, y_train, y_test, X_train_sc, X_test_sc, features):
+    print("[4/5] Training models...")
 
-    print("\n✅ Project complete! Check /plots/ for all visualisations.")
+    model_configs = [
+        ('Linear Regression',  LinearRegression(),                                           X_train_sc, X_test_sc),
+        ('Ridge Regression',   Ridge(alpha=10),                                              X_train_sc, X_test_sc),
+        ('Lasso Regression',   Lasso(alpha=0.1),                                             X_train_sc, X_test_sc),
+        ('Random Forest',      RandomForestRegressor(n_estimators=100, random_state=42),     X_train,    X_test),
+        ('Gradient Boosting',  GradientBoostingRegressor(n_estimators=100, random_state=42), X_train,    X_test),
+    ]
+
+    results = []
+    for name, model, Xtr, Xte in model_configs:
+        model.fit(Xtr, y_train)
+        yp   = model.predict(Xte)
+        r2   = r2_score(y_test, yp)
+        rmse = np.sqrt(mean_squared_error(y_test, yp))
+        mae  = mean_absolute_error(y_test, yp)
+        cv   = cross_val_score(model, Xtr, y_train, cv=5, scoring='r2').mean()
+        results.append({'name': name, 'model': model, 'r2': r2,
+                        'rmse': rmse, 'mae': mae, 'cv': cv, 'preds': yp})
+        print(f"      {name:<22} R²={r2:.4f}  RMSE=₹{rmse:.2f}L  CV={cv:.4f}")
+
+    # Comparison plots
+    res_df = pd.DataFrame([{k: v for k, v in r.items()
+                            if k not in ('model', 'preds')} for r in results])
+    res_df = res_df.sort_values('r2', ascending=False).reset_index(drop=True)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    c1 = ['#2ecc71' if v == res_df['r2'].max() else '#3498db' for v in res_df['r2']]
+    axes[0].barh(res_df['name'], res_df['r2'], color=c1)
+    axes[0].set(title='R² Score Comparison', xlabel='R²')
+    for i, v in enumerate(res_df['r2']):
+        axes[0].text(v + 0.005, i, f'{v:.4f}', va='center')
+
+    c2 = ['#2ecc71' if v == res_df['rmse'].min() else '#e74c3c' for v in res_df['rmse']]
+    axes[1].barh(res_df['name'], res_df['rmse'], color=c2)
+    axes[1].set(title='RMSE Comparison — lower is better', xlabel='RMSE (Lakhs ₹)')
+    plt.tight_layout()
+    plt.savefig('plots/model_comparison.png', dpi=150, bbox_inches='tight')
+    plt.close()
+
+    # Best model plots
+    best = max(results, key=lambda x: x['r2'])
+    yp   = best['preds']
+
+    plt.figure(figsize=(9, 6))
+    plt.scatter(y_test, yp, alpha=0.3, color='steelblue', s=15)
+    mn, mx = float(y_test.min()), float(y_test.max())
+    plt.plot([mn, mx], [mn, mx], 'r--', lw=2, label='Perfect prediction')
+    plt.title(f'Actual vs Predicted — {best["name"]}', fontsize=14, fontweight='bold')
+    plt.xlabel('Actual Price (Lakhs ₹)')
+    plt.ylabel('Predicted Price (Lakhs ₹)')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig('plots/actual_vs_predicted.png', dpi=150, bbox_inches='tight')
+    plt.close()
+
+    if hasattr(best['model'], 'feature_importances_'):
+        imp = pd.Series(best['model'].feature_importances_, index=features).sort_values()
+        plt.figure(figsize=(8, 5))
+        c = ['#2ecc71' if v == imp.max() else '#3498db' for v in imp]
+        imp.plot(kind='barh', color=c)
+        plt.title(f'Feature Importance — {best["name"]}', fontsize=14, fontweight='bold')
+        plt.xlabel('Importance Score')
+        plt.tight_layout()
+        plt.savefig('plots/feature_importance.png', dpi=150, bbox_inches='tight')
+        plt.close()
+
+    return best['model'], res_df
+
+
+# ─────────────────────────────────────────────────────
+# 5. PREDICT ON SAMPLE
+# ─────────────────────────────────────────────────────
+def predict_sample(model, le, scaler):
+    print("\n[5/5] Sample prediction...")
+
+    # Example: 2 BHK, 1200 sqft, Electronic City Phase II
+    location_name = 'Whitefield'
+    loc_enc = le.transform([location_name])[0] if location_name in le.classes_ else le.transform(['Other'])[0]
+
+    sample = pd.DataFrame([{
+        'total_sqft'  : 1200,
+        'bath'        : 2,
+        'balcony'     : 1,
+        'bhk'         : 2,
+        'location_enc': loc_enc
+    }])
+
+    predicted = model.predict(sample)[0]
+    print(f"\n{'='*45}")
+    print("  SAMPLE HOUSE DETAILS")
+    print(f"{'='*45}")
+    print(f"  Location   : {location_name}")
+    print(f"  Area       : 1200 sqft")
+    print(f"  BHK        : 2")
+    print(f"  Bathrooms  : 2")
+    print(f"  💰 Predicted Price: ₹{predicted:.2f} Lakhs")
+    print(f"{'='*45}")
+
+
+# ─────────────────────────────────────────────────────
+# MAIN
+# ─────────────────────────────────────────────────────
+if __name__ == '__main__':
+    print("\n" + "="*50)
+    print("  HOUSE PRICE PREDICTION — BANGALORE")
+    print("="*50 + "\n")
+
+    df = load_and_clean('House_Data.csv')
+    run_eda(df)
+    X_train, X_test, y_train, y_test, X_train_sc, X_test_sc, le, scaler, features = preprocess(df)
+    best_model, results = train_and_evaluate(X_train, X_test, y_train, y_test, X_train_sc, X_test_sc, features)
+    predict_sample(best_model, le, scaler)
+
+    print("\n✅ Done! Check /plots/ for all visualisations.")

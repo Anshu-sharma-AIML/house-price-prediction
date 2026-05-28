@@ -1,19 +1,14 @@
-# 🏠 House Price Prediction
+# 🏠 House Price Prediction — Bangalore
 
-A regression-based machine learning project that predicts house prices using features like area, location, number of rooms, and more.
+A machine learning project that predicts house prices in Bangalore using a real dataset of **13,000+ property listings**.
 
-Built with **Python, Pandas, NumPy, Scikit-learn, Matplotlib, and Seaborn**.
+**Tech Stack:** Python · Pandas · NumPy · Scikit-learn · Matplotlib · Seaborn
 
 ---
 
 ## 📌 Project Overview
 
-This project explores the house price prediction problem end-to-end:
-- Exploratory Data Analysis (EDA)
-- Feature Engineering
-- Training and comparing 5 regression models
-- Evaluating with R² Score and RMSE
-- Visualising predictions and feature importances
+This project builds and compares multiple regression models to predict property prices in Bangalore, India. It covers the full ML pipeline — data cleaning, EDA, feature engineering, model training, and evaluation using **R² Score** and **RMSE**.
 
 ---
 
@@ -22,14 +17,16 @@ This project explores the house price prediction problem end-to-end:
 ```
 house-price-prediction/
 │
-├── house_price_prediction.ipynb  # Full notebook (EDA + models + plots)
-├── model.py                      # Standalone Python script
-├── house_prices.csv              # Dataset (auto-generated on first run)
-├── requirements.txt              # Dependencies
-├── plots/                        # Output plots
+├── House_Data.csv                # Real Bangalore housing dataset (13,000+ rows)
+├── model.py                      # Full ML pipeline script
+├── house_price_prediction.ipynb  # Jupyter notebook with detailed analysis
+├── requirements.txt              # Python dependencies
+├── plots/                        # Generated visualisation plots
 │   ├── price_distribution.png
-│   ├── price_by_location.png
+│   ├── price_by_bhk.png
+│   ├── sqft_vs_price.png
 │   ├── correlation_heatmap.png
+│   ├── top_locations.png
 │   ├── model_comparison.png
 │   ├── actual_vs_predicted.png
 │   └── feature_importance.png
@@ -38,88 +35,76 @@ house-price-prediction/
 
 ---
 
-## 🔧 Features Used
+## 📊 Dataset
 
-| Feature | Description |
-|---------|-------------|
-| `Area_sqft` | Total area of the property |
-| `Bedrooms` | Number of bedrooms |
-| `Bathrooms` | Number of bathrooms |
-| `Floors` | Number of floors |
-| `Age_years` | Age of the property |
-| `Garage` | Garage capacity |
-| `Has_Garden` | Garden availability (0/1) |
-| `Has_Pool` | Swimming pool (0/1) |
-| `Location` | Neighborhood tier (Prime/Good/Average/Outskirts) |
-| `Total_rooms` | Engineered: Bedrooms + Bathrooms |
-| `Is_new` | Engineered: Age ≤ 5 years |
-| `Luxury_score` | Engineered: Garden + Pool + Garage > 1 |
+| Property | Detail |
+|----------|--------|
+| Source | Bangalore real estate listings |
+| Rows | 13,320 (raw) → 11,903 (after cleaning) |
+| Target | `price` (in Lakhs ₹) |
+| Key Features | Location, BHK, Total Sqft, Bathrooms, Balcony |
 
 ---
 
-## 🤖 Models Trained
+## 🔧 Data Cleaning Steps
 
-| Model | R² Score | Notes |
-|-------|----------|-------|
-| Linear Regression | ~0.88 | Baseline |
-| Ridge Regression | ~0.88 | L2 regularisation |
-| Lasso Regression | ~0.87 | L1 regularisation |
-| Random Forest | ~0.95 | ⭐ Best Model |
-| Gradient Boosting | ~0.94 | Close second |
-
-> **Best Model: Random Forest** with R² ≈ 0.95 and RMSE ≈ ₹1.5L
+- Dropped irrelevant columns (`society`, `availability`, `area_type`)
+- Removed 529 duplicate rows
+- Extracted BHK count from text field (`"2 BHK"` → `2`)
+- Converted range values in `total_sqft` (`"1000-1500"` → `1250.0`)
+- Filled missing `bath` and `balcony` with median values
+- Removed outliers using price-per-sqft thresholds
+- Grouped rare locations (< 10 listings) as `"Other"`
 
 ---
 
-## 📊 Sample Visualisations
+## 🤖 Models Trained & Results
 
-- Price distribution (normal + log-transformed)
-- Price vs Location (box plots)
-- Area vs Price scatter by location
-- Correlation heatmap
-- Model R² and RMSE comparison
-- Actual vs Predicted plot
-- Feature Importance chart
+| Model | R² Score | RMSE (Lakhs) | CV R² |
+|-------|----------|--------------|-------|
+| **Gradient Boosting** | **0.617** | **77.8** | **0.583** |
+| Random Forest | 0.585 | 81.0 | 0.573 |
+| Ridge Regression | 0.487 | 90.1 | 0.472 |
+| Lasso Regression | 0.487 | 90.1 | 0.472 |
+| Linear Regression | 0.487 | 90.1 | 0.472 |
+
+> **Best Model: Gradient Boosting** — R² = 0.617, RMSE = ₹77.8 Lakhs
+>
+> Note: Real-world housing data has inherent noise from unobserved factors (interior condition, negotiation, etc.) which limits maximum achievable R².
+
+---
+
+## 📈 Key Findings
+
+- **Location** is the most important predictor of house price
+- **Total sqft** and **BHK** are the next strongest features
+- Gradient Boosting significantly outperforms linear models
+- Top locations by median price: Race Course Road, Sankey Road, Lavelle Road
 
 ---
 
 ## ▶️ How to Run
 
-### Option 1 – Jupyter Notebook (Recommended)
 ```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Run the full pipeline
+python model.py
+
+# Or open the notebook
 jupyter notebook house_price_prediction.ipynb
 ```
-
-### Option 2 – Python Script (Model Training)
-```bash
-pip install -r requirements.txt
-python model.py
-```
-
-### Option 3 – Interactive Price Predictor
-```bash
-python predict.py
-```
-
----
-
-## 📈 Evaluation Metrics
-
-- **R² Score** — Proportion of variance explained by the model
-- **RMSE** — Root Mean Squared Error (penalises large errors)
-- **MAE** — Mean Absolute Error
-- **5-Fold Cross-Validation R²** — Checks model generalisation
 
 ---
 
 ## 🛠️ Tech Stack
 
-- Python 3.10+
-- Pandas, NumPy
-- Scikit-learn
-- Matplotlib, Seaborn
-- Jupyter Notebook
+- **Python 3.10+**
+- **Pandas** — data manipulation and cleaning
+- **NumPy** — numerical operations
+- **Scikit-learn** — ML models, preprocessing, evaluation
+- **Matplotlib & Seaborn** — data visualisation
 
 ---
 
@@ -127,4 +112,5 @@ python predict.py
 
 **Anshu Sharma**  
 B.Tech CSE — Shri Shankaracharya Professional University, Bhilai  
-📧 anshusharma6117@gmail.com
+📧 anshusharma6117@gmail.com  
+🔗 [LinkedIn](https://linkedin.com/in/AnshuSharma)

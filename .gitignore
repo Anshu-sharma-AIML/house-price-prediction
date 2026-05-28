@@ -2,11 +2,6 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 .env
-*.egg-info/
-dist/
-build/
-.DS_Store
 venv/
-house_prices.csv
-*.joblib
-
+*.egg-info/
+.DS_Store
