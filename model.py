@@ -279,4 +279,11 @@ if __name__ == '__main__':
     best_model, results = train_and_evaluate(X_train, X_test, y_train, y_test, X_train_sc, X_test_sc, features)
     predict_sample(best_model, le, scaler)
 
+    # Save the model, label encoder, and scaler for interactive predictions
+    import joblib
+    joblib.dump(best_model, 'best_model.joblib')
+    joblib.dump(le, 'label_encoder.joblib')
+    joblib.dump(scaler, 'scaler.joblib')
+    print("[SAVED] Best model ('best_model.joblib'), LabelEncoder ('label_encoder.joblib'), and Scaler ('scaler.joblib') saved.")
+
     print("\n✅ Done! Check /plots/ for all visualisations.")
