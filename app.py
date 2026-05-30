@@ -40,7 +40,7 @@ st.markdown("""
         margin-top: 20px;
     }
     </style>
-""", unsafe_html=True)
+""", unsafe_allow_html=True)
 
 st.title("🏠 Bangalore House Price Predictor")
 st.write("Provide details of the house below to estimate its market price based on real Bangalore real estate listings data.")
@@ -104,7 +104,7 @@ else:
             price_in_rupees = predicted_lakhs * 100000
             
             # Display Prediction
-            st.markdown('<div class="result-box">', unsafe_html=True)
+            st.markdown('<div class="result-box">', unsafe_allow_html=True)
             st.subheader("🎉 Prediction Results")
             st.write(f"**📍 Location**: {location} | **📏 Area**: {area} sqft | **🛏️ Type**: {bhk} BHK ({bathrooms} Bath)")
             
@@ -115,7 +115,7 @@ else:
                 st.success(f"### Estimated Price: **₹{predicted_lakhs:.2f} Lakhs** (₹{price_in_rupees:,.0f})")
                 
             st.caption(f"Predicted using the best model: **{model_name}**")
-            st.markdown('</div>', unsafe_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
             
     except Exception as e:
         st.error(f"❌ Error loading model: {e}")
