@@ -120,4 +120,4 @@ jupyter notebook house_price_prediction.ipynb
 **Anshu Sharma**  
 B.Tech CSE — Shri Shankaracharya Professional University, Bhilai  
 📧 anshusharma6117@gmail.com  
-🔗 [LinkedIn](https://linkedin.com/in/AnshuSharma)
+🔗 [LinkedIn](www.linkedin.com/in/anshu-sharma13)
