@@ -1,3 +1,10 @@
+## 🚀 Live Demo
+👉 [Click here to try the app](https://house-price-prediction-zcckobfbrbyywxwpv9ow9j.streamlit.app/)
+
+---
+
+
+
 # 🏠 House Price Prediction — Bangalore
 
 A machine learning project that predicts house prices in Bangalore using a real dataset of **13,000+ property listings**.
